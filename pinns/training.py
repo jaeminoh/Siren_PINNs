@@ -6,28 +6,29 @@ import matplotlib.pyplot as plt
 
 def train(model, optimizer, domain_tr, key, params, nIter=5*10**4):
     T, X = model.T, model.X
+    x_L, x_R = model.x_bd
     domain = [*domain_tr]
     Nt, Nx = domain[0].size, domain[1].size
     state = optimizer.init_state(params)
-    model.loss_log = []
+    loss_log = []
 
     @jit
     def step(params, state, *args, **kwargs):
-        # optimizer: OptaxSolver
-        params, state= optimizer.update(params, state, *args, **kwargs)
+        params, state = optimizer.update(params, state, *args, **kwargs)
         return params, state
 
     for it in (pbar:= trange(1,nIter+1)):
         params, state = step(params, state, *domain)
         if it%100 == 0:
             loss = state.value
-            model.loss_log.append(loss)
+            loss_log.append(loss)
             # domain sampling
             key, *subkey = random.split(key, 3)
             domain[0] = T*random.uniform(subkey[0], (Nt,))
-            domain[1] = X*random.uniform(subkey[1], (Nx,), minval=-1, maxval=1)
-            model.opt_params = params
+            domain[1] = X*random.uniform(subkey[1], (Nx,), minval=x_L, maxval=x_R)
             pbar.set_postfix({'PINN Loss': f'{loss:.3e}'})
+    
+    return params, loss_log
 
 
 def drawing(model, save=True, fname='advection'):

@@ -6,6 +6,7 @@ from jax.experimental.jet import jet
 
 from pinns.nn import Siren
 
+
 class ivps:
     def __init__(self, width=64, depth=5, w0=8.):
         # architecture
@@ -26,11 +27,11 @@ class ivps:
         loss_ic = np.mean( (init_pred - init_data)**2 )
         return loss_ic
 
+    # Default: periodic on x
     def loss_bc(self, params, t):
         x = self.X * self.x_bd
-        # Dirichlet on x
         u = self.u(params, t,x)
-        loss_bc = np.mean( u**2 )
+        loss_bc = np.mean( (u[...,-1] - u[...,0])**2 )
         return loss_bc
     
     @partial(jit, static_argnums=(0,))
@@ -58,6 +59,9 @@ class burgers(ivps):
         super().__init__(width, depth, w0)
         self.nu = nu
     
+    def u0(self, x):
+        return -np.sin(np.pi*x)
+
     def pde(self, params, t,x):
         u_t = jvp(lambda t: self.u(params, t,x), (t,), (np.ones(t.shape),))[1]
         u, (u_x, u_xx) = jet(lambda x: self.u(params, t,x), 
@@ -66,9 +70,12 @@ class burgers(ivps):
         pde = (u_t + u*u_x - self.nu*u_xx/np.pi)**2 
         return pde
     
-    # Initial function
-    def u0(self, x):
-        return -np.sin(np.pi*x)
+    def loss_bc(self, params, t):
+        x = self.X * self.x_bd
+        # Dirichelt on x
+        u = self.u(params, t,x)
+        loss_bc = np.mean( u**2 )
+        return loss_bc
 
 
 class advection(ivps):
@@ -79,7 +86,7 @@ class advection(ivps):
 
     def __init__(self, width=64, depth=5, w0=8., beta=30.):
         super().__init__(width, depth, w0)
-        # coefficient
+        # coefficients
         self.beta = beta
 
     def u0(self, x):
@@ -100,7 +107,7 @@ class reaction(ivps):
 
     def __init__(self, width=64, depth=5, w0=8., rho=5.):
         super().__init__(width, depth, w0)
-        # coefficient
+        # coefficients
         self.rho = rho
     
     def u0(self, x):
@@ -121,7 +128,7 @@ class reaction_diffusion(ivps):
 
     def __init__(self, width=64, depth=5, w0=8., nu=5., rho=5.):
         super().__init__(width, depth, w0)
-        # coefficient
+        # coefficients
         self.nu, self.rho = nu, rho
     
     def u0(self, x):
