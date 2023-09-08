@@ -10,4 +10,7 @@ In this repository, we take a different approach, focusing on the application of
 Siren employs a sine activation function and a corresponding initialization scheme, enabling efficient learning of high-frequency signals with MLPs. 
 By leveraging Siren, we aim to overcome the challenges posed by complex PDEs without resorting to the aforementioned curriculum-based methods.
 
-- main.ipynb:  burgers, advection, reaction, reaction_diffusion, allen_cahn equations.
+Further speedups can be possible with "[Separable PINN](https://arxiv.org/abs/2211.08761)".
+
+Burgers, advection, reaction, reaction-diffusion, Allen-Cahn equations are implemented in pinns/ivps.py.
+Simple example code is available in demo.ipynb.

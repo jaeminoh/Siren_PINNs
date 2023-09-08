@@ -1,24 +1,27 @@
 from functools import partial
 
 import jax.numpy as np
-from jax import vmap, jit, jvp
+from jax import vmap, jit, jvp, random
 from jax.experimental.jet import jet
+from tqdm import trange
+import matplotlib.pyplot as plt
 
 from pinns.nn import Siren
 
 
 class ivps:
-    def __init__(self, width=64, depth=5, w0=8.):
-        # architecture
-        layers = [2] + [width for _ in range(depth-1)] + [1]
-        self.init, self.apply = Siren(layers, w0)
-        # vectorize
-        self.u = vmap(vmap(self._u, (None,0,None)), (None,None,0), 1) #(Nt, Nx)
-
-    def _u(self, params, t,x):
-        input = np.hstack([t,x])
-        _u = self.apply(params, input).squeeze()
-        return _u
+    name = 'ivps'
+    T = 1.
+    
+    # solution, initial condition and pde must be overrided
+    def u(self):
+        raise NotImplementedError
+    
+    def u0(self):
+        raise NotImplementedError
+    
+    def pde(self):
+        raise NotImplementedError
 
     def loss_ic(self, params, x):
         t = np.zeros((1,))
@@ -41,22 +44,63 @@ class ivps:
                 + self.loss_bc(params, t))
         return loss
     
-    # initial condition and pde must be overrided
-    def u0(self, x):
-        raise NotImplementedError
     
-    def pde(self, t,x):
-        raise NotImplementedError
+    def train(self, optimizer, domain_tr, key, params, nIter=5*10**4):
+        print(self.equation)
+        T, X = self.T, self.X
+        x_L, x_R = self.x_bd
+        domain = [*domain_tr]
+        Nt, Nx = domain[0].size, domain[1].size
+        state = optimizer.init_state(params)
+        loss_log = []
+
+        @jit
+        def step(params, state, *args, **kwargs):
+            params, state = optimizer.update(params, state, *args, **kwargs)
+            return params, state
+
+        for it in (pbar:= trange(1,nIter+1)):
+            params, state = step(params, state, *domain)
+            if it%100 == 0:
+                loss = state.value
+                loss_log.append(loss)
+                # domain sampling
+                key, *subkey = random.split(key, 3)
+                domain[0] = T*random.uniform(subkey[0], (Nt,))
+                domain[1] = X*random.uniform(subkey[1], (Nx,), minval=x_L, maxval=x_R)
+                pbar.set_postfix({'pinn loss': f'{loss:.3e}'})
+        
+        self.opt_params, self.loss_log = params, loss_log
+    
+
+    def drawing(self, save=True):
+        dir = f'figures/{self.name}'
+        fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(12,5))
+        # loss log
+        ax1.semilogy(self.loss_log, label='PINN Loss')
+        ax1.set_xlabel('100 iterations')
+        ax1.set_ylabel('Mean Squared Error')
+        # Solution profile
+        opt_params = self.opt_params
+        domain = (self.T * np.linspace(0,1, 200),
+                  self.X * np.linspace(*self.x_bd, 200))
+        pred = self.u(opt_params, *domain)
+        im = ax2.imshow(pred.T, origin='lower', cmap='jet', aspect='auto')
+        ax2.axis('off')
+        fig.colorbar(im)
+        if save:
+            fig.savefig(dir)
+        else:
+            fig.show()
 
 
 class burgers(ivps):
     name = 'burgers'
-    T = 1.
+    equation = 'u_t + uu_x = νu_xx/𝝅'
     X = 1.
     x_bd = np.array([-1, 1])
 
-    def __init__(self, width=64, depth=5, w0=8., nu=1e-02):
-        super().__init__(width, depth, w0)
+    def __init__(self, nu=1e-02):
         self.nu = nu
     
     def u0(self, x):
@@ -80,13 +124,12 @@ class burgers(ivps):
 
 class advection(ivps):
     name = 'advection'
+    equation = 'u_t + βu_x = 0'
     T = 1.
     X = 2*np.pi
     x_bd = np.array([0, 1])
 
-    def __init__(self, width=64, depth=5, w0=8., beta=30.):
-        super().__init__(width, depth, w0)
-        # coefficients
+    def __init__(self, beta=30.):
         self.beta = beta
 
     def u0(self, x):
@@ -101,13 +144,11 @@ class advection(ivps):
     
 class reaction(ivps):
     name = 'reaction'
-    T = 1.
+    equation = 'u_t = ρu(1-u)'
     X = 2*np.pi
     x_bd = np.array([0, 1])
 
-    def __init__(self, width=64, depth=5, w0=8., rho=5.):
-        super().__init__(width, depth, w0)
-        # coefficients
+    def __init__(self, rho=5.):
         self.rho = rho
     
     def u0(self, x):
@@ -122,13 +163,11 @@ class reaction(ivps):
 
 class reaction_diffusion(ivps):
     name = 'reaction_diffusion'
-    T = 1.
+    equation = 'u_t = νu_xx + ρu(1-u)'
     X = 2*np.pi
     x_bd = np.array([0, 1])
 
-    def __init__(self, width=64, depth=5, w0=8., nu=5., rho=5.):
-        super().__init__(width, depth, w0)
-        # coefficients
+    def __init__(self, nu=5., rho=5.):
         self.nu, self.rho = nu, rho
     
     def u0(self, x):
@@ -146,13 +185,11 @@ class reaction_diffusion(ivps):
     
 class allen_cahn(ivps):
     name = 'allen_cahn'
-    T = 1.
+    equation = 'u_t = νu_xx + ρu(1-u^2)'
     X = 1.
     x_bd = np.array([-1, 1])
 
-    def __init__(self, width=64, depth=5, w0=8., nu=1e-04, rho=5.):
-        super().__init__(width, depth, w0)
-        # coefficients
+    def __init__(self, nu=1e-04, rho=5.):
         self.nu, self.rho = nu, rho
     
     def u0(self, x):
