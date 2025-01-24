@@ -12,5 +12,5 @@ By leveraging Siren, we aim to overcome the challenges posed by complex PDEs wit
 
 Further speedups can be possible with "[Separable PINN](https://arxiv.org/abs/2211.08761)".
 
-Burgers, advection, reaction, reaction-diffusion, Allen-Cahn equations are implemented in pinns/ivps.py.
-Simple example code is available in demo.ipynb.
+Burgers, advection, reaction, reaction-diffusion, Allen-Cahn equations are implemented in `pinns/ivps.py`.
+Simple example code is available in `pinn.py` and `spinn.py`.
