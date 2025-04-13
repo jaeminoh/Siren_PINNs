@@ -1,5 +1,7 @@
 # Resolving failure modes of PINNs with osciliatory activation functions.
 
+[![DOI](https://zenodo.org/badge/664425702.svg)](https://doi.org/10.5281/zenodo.15207858)
+
 It is widely acknowledged that standard Multilayer Perceptrons (MLPs) have inherent limitations in effectively learning high-frequency signals.
 Consequently, Partial Differential Equations (PDEs) with periodic, sharp, and highly variable solutions pose a significant challenge when trained using [Physics-Informed Neural Networks (PINNs)](https://doi.org/10.1016/j.jcp.2018.10.045).
 
